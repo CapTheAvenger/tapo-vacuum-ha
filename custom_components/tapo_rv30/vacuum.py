@@ -6,6 +6,7 @@ from typing import Any
 
 from homeassistant.components.vacuum import (
     StateVacuumEntity,
+    VacuumActivity,
     VacuumEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -25,13 +26,21 @@ from .coordinator import TapoCoordinator, _b64name
 
 _LOGGER = logging.getLogger(__name__)
 
+_ACTIVITY = {
+    "idle": VacuumActivity.IDLE,
+    "cleaning": VacuumActivity.CLEANING,
+    "returning": VacuumActivity.RETURNING,
+    "docked": VacuumActivity.DOCKED,
+    "paused": VacuumActivity.PAUSED,
+    "error": VacuumActivity.ERROR,
+}
+
 _FEATURES = (
     VacuumEntityFeature.START
     | VacuumEntityFeature.PAUSE
     | VacuumEntityFeature.STOP
     | VacuumEntityFeature.RETURN_HOME
     | VacuumEntityFeature.FAN_SPEED
-    | VacuumEntityFeature.BATTERY
     | VacuumEntityFeature.STATE
     | VacuumEntityFeature.MAP
 )
@@ -67,16 +76,12 @@ class TapoVacuumEntity(CoordinatorEntity[TapoCoordinator], StateVacuumEntity):
         }
 
     @property
-    def state(self) -> str | None:
+    def activity(self) -> VacuumActivity | None:
         d = self.coordinator.data
         if d is None:
             return None
-        return VACUUM_STATES.get(d.get("status_code", 0), "idle")
-
-    @property
-    def battery_level(self) -> int | None:
-        d = self.coordinator.data
-        return d.get("battery") if d else None
+        name = VACUUM_STATES.get(d.get("status_code", 0), "idle")
+        return _ACTIVITY.get(name, VacuumActivity.IDLE)
 
     @property
     def fan_speed(self) -> str | None:
