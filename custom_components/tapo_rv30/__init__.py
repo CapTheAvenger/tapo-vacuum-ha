@@ -7,6 +7,7 @@ from functools import partial
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     DEFAULT_PORT,
@@ -47,12 +48,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     def _resolve_coordinator(call: ServiceCall) -> TapoCoordinator:
-        entity_ids: list[str] = call.data.get("entity_id", [])
+        """Return the coordinator of the targeted vacuum.
+
+        Previously this always returned the first configured robot, so with
+        two robots every service call went to the wrong one. Resolve the
+        targeted entity's config entry via the entity registry instead.
+        """
+        coordinators: dict[str, TapoCoordinator] = hass.data[DOMAIN]
+        entity_ids = call.data.get("entity_id", [])
+        if isinstance(entity_ids, str):
+            entity_ids = [entity_ids]
+        ent_reg = er.async_get(hass)
         for entity_id in entity_ids:
-            state = hass.states.get(entity_id)
-            if state and state.attributes.get("integration") == DOMAIN:
-                return next(iter(hass.data[DOMAIN].values()))
-        return next(iter(hass.data[DOMAIN].values()))
+            reg_entry = ent_reg.async_get(entity_id)
+            if reg_entry and reg_entry.config_entry_id in coordinators:
+                return coordinators[reg_entry.config_entry_id]
+        if entity_ids:
+            _LOGGER.warning(
+                "No Tapo vacuum found for %s, using first configured robot",
+                entity_ids,
+            )
+        return next(iter(coordinators.values()))
 
     async def handle_clean_rooms(call: ServiceCall) -> None:
         """Service: tapo_rv30.clean_rooms."""
